@@ -1,105 +1,149 @@
-# ⚡ OrbitStream Contracts
+# OrbitStream Contracts
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Rust](https://img.shields.io/badge/Rust-1.74+-orange)](https://www.rust-lang.org/)
-[![Soroban SDK](https://img.shields.io/badge/Soroban-SDK-7C68EE)](https://soroban.stellar.org/)
-[![Stellar](https://img.shields.io/badge/Stellar-Testnet-blue)](https://stellar.org/)
+Soroban smart contract(s) for OrbitStream — a token streaming / payroll platform built for Stellar/Soroban.
 
-> **Soroban smart contracts powering real-time token streaming on Stellar.**
+## Summary
 
-OrbitStream Contracts is the on-chain layer of the OrbitStream protocol. A single Rust/Soroban contract handles the full stream lifecycle — from creation and top-ups to per-second claiming, pausing, resuming, and cancellation with prorated settlement.
+This repo implements on-chain streaming payroll: employers open time-based streams to employees, deposit tokens, and employees claim accrued tokens. Streams track deposited/withdrawn amounts, per-second rates, pause/resume windows, and lifecycle events.
 
----
+## Repository layout
 
-## ✨ What the contract does
+- `src/lib.rs` — contract entrypoint and public methods
+- `src/stream.rs` — `Stream` struct and `StreamStatus` enum
+- `src/storage.rs` — persistence helpers and indices by employer/employee
+- `src/math.rs` — claimable / accrued math and validators
+- `src/events.rs` — event types and emitters
+- `src/errors.rs` — contract error codes
+- `tests/` — (planned) integration/unit test files
 
-- 🌊 **Continuous streaming** — tokens accrue every active second using `env.ledger().timestamp()`
-- ⏸️ **Pause & resume** — senders freeze the clock; paused time is excluded from earnings
-- 💸 **Cancel & settle** — recipient gets earned tokens; sender gets unearned funds back
-- 🔒 **Solvency invariant** — claimable always capped at `total_deposited - total_claimed`
-- ⛽ **Top-up** — add more tokens to extend stream runway at any time
-- 🔁 **Upgradeable** — admin pushes new WASM without redeploying via `upgrade()`
+## Prerequisites
 
----
+- Rust toolchain (stable)
+- wasm target for Soroban: `rustup target add wasm32-unknown-unknown`
+- Soroban CLI (recommended): https://soroban.stellar.org/docs/getting-started/cli
 
-## 🗂️ Structure
+## Build
 
-```
-Contract/
-├── Cargo.toml
-└── contracts/
-    ├── hello-world/       # Soroban starter example
-    └── stream/            # OrbitStream production contract
-        ├── Cargo.toml
-        └── src/lib.rs     # Full contract + 8 test cases
-```
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
+Build the contract wasm with Cargo:
 
 ```bash
-rustup target add wasm32-unknown-unknown
-cargo install stellar-cli --features opt
-```
-
-### Build
-
-```bash
-cd Contract
 cargo build --target wasm32-unknown-unknown --release
 ```
 
-### Test
+Or use the Soroban CLI which wraps build+bundle:
+
+```bash
+soroban contract build
+```
+
+Output location:
+
+- Cargo: `target/wasm32-unknown-unknown/release/` (look for the wasm file)
+- Soroban: `target/wasm/` or the CLI's configured output directory
+
+## Tests
+
+Run unit tests:
 
 ```bash
 cargo test
 ```
 
-### Deploy to Testnet
+Run a quick type-check:
 
 ```bash
-stellar contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/orbitstream_stream.wasm \
-  --source <your-keypair> \
-  --network testnet
+cargo check
 ```
 
+Integration testing recommendation:
+
+- Use the Soroban local sandbox or test harness to deploy the compiled wasm and exercise end-to-end flows (create -> accrue -> claim -> cancel).
+
+## Deploy (example)
+
+Using Soroban CLI:
+
+```bash
+# build first
+soroban contract build
+
+# deploy to local sandbox
+soroban contract deploy --wasm target/wasm/orbitstream-contract.wasm --source <KEY>
+
+# deploy to testnet (replace with actual network flags and key)
+soroban contract deploy --wasm target/wasm/orbitstream-contract.wasm --network testnet --source <KEY>
+```
+
+Alternative (raw Stellar CLI placeholder):
+
+```bash
+# stellar contract deploy --wasm <wasm-path> --source <your-keypair> --network testnet
+```
+
+## Contract API (public functions)
+
+This contract exposes a small set of core operations. See `src/lib.rs` for signatures and types.
+
+- `create_stream(employer, employee, token, rate_per_second, start_time, end_time, deposit) -> stream_id`
+  - Caller: `employer` (must authorize)
+  - Creates a new stream and emits `StreamCreated` event.
+
+- `get_claimable(env, stream_id) -> u128`
+  - Caller: anyone
+  - Returns the currently claimable amount for `stream_id`.
+
+- `get_stream(env, stream_id) -> Stream`
+  - Caller: anyone
+  - Returns stream details.
+
+Planned / TODO functions (to be implemented): `top_up`, `pause_stream`, `resume_stream`, `cancel_stream`, `update_rate`, `claim`, `claim_partial`.
+
+## Example calls (Soroban CLI style)
+
+Create stream (example placeholder — adjust types to your keys and addresses):
+
+```bash
+soroban contract invoke --wasm target/wasm/orbitstream-contract.wasm \
+	--id create_stream --arg <employer_address> <employee_address> <token_address> 1_000_000_000000 1680000000 1682592000 100000000000
+```
+
+Get claimable:
+
+```bash
+soroban contract invoke --wasm target/wasm/orbitstream-contract.wasm --id get_claimable --arg <stream_id>
+```
+
+Note: Replace CLI invocation with the exact Soroban CLI flags or RPC library calls you use. The ABI is in `src/lib.rs`.
+
+## Events
+
+The contract emits typed events for lifecycle changes (see `src/events.rs`):
+
+- `stream_created`
+- `stream_top_up`
+- `stream_claimed`
+- `stream_paused`
+- `stream_resumed`
+- `stream_cancelled`
+- `stream_rate_updated`
+
+Events are useful for indexing and off-chain notifications.
+
+## Security & Design Notes
+
+- Claimable math uses defensive checks to avoid overflow/underflow — see `src/math.rs`.
+- Streams respect `start_time`, `end_time`, and `paused_duration` in accrual calculations.
+- Access control: only the employer may change stream configuration; only the employee may claim.
+
+## Contributing
+
+- Add tests under `tests/` for each public function and lifecycle path.
+- Follow Rust formatting: `cargo fmt` and `cargo clippy` before PRs.
+
+## License
+
+MIT. See repository license file for details.
+
 ---
 
-## 📖 Contract API
-
-| Function | Caller | Description |
-|----------|--------|-------------|
-| `initialize(admin)` | Admin | One-time setup |
-| `create_stream(sender, recipient, token, rate, duration, deposit)` | Sender | Open a new stream |
-| `top_up(sender, stream_id, amount)` | Sender | Add more tokens |
-| `claim(recipient, stream_id)` | Recipient | Withdraw accrued tokens |
-| `pause_stream(sender, stream_id)` | Sender | Freeze the clock |
-| `resume_stream(sender, stream_id)` | Sender | Unfreeze the clock |
-| `cancel_stream(sender, stream_id)` | Sender | Close with settlement |
-| `admin_cancel(stream_id)` | Admin | Emergency cancel |
-| `get_stream(stream_id)` | Anyone | Read stream state |
-| `claimable_amount(stream_id)` | Anyone | Preview claimable tokens |
-
----
-
-## 🧪 Tests
-
-8 test cases — happy path, solvency cap, pause/resume, cancel settlement, top-up, auto-complete, self-stream rejection, stream count.
-
----
-
-## 🔗 Related Repos
-
-- [OrbitStream Backend](https://github.com/OrbitStream/OrbitStream_backend) — NestJS API
-- [OrbitStream Frontend](https://github.com/OrbitStream/orbitstream-frontend) — Web dashboard
-- [OrbitStream Docs](https://github.com/OrbitStream/orbitstream-docs) — Documentation
-
----
-
-## 📜 License
-
-MIT License. Copyright (c) 2026 OrbitStream Protocol.
+For background and design notes see `CLAUDE.md`.

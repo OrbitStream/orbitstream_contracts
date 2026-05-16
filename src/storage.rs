@@ -1,5 +1,5 @@
 use crate::stream::Stream;
-use soroban_sdk::{contracttype, Address, Env, Vec};
+use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
 
 #[contracttype]
 #[derive(Clone)]
