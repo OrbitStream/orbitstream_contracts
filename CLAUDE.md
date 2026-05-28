@@ -1,7 +1,7 @@
-# Stellar Checkout Contracts
+# OrbitStream Contracts
 
 ## Project
-Soroban smart contract for Stellar Checkout — escrow functionality for dispute-prone payments.
+Soroban smart contracts for OrbitStream — a developer-friendly payment gateway for Stellar. This repo contains the on-chain escrow contract used for dispute-prone payments (marketplace, freelance, subscriptions).
 
 ## Stack
 - Rust (edition 2021)
@@ -23,7 +23,7 @@ Escrow: id, buyer, seller, token, amount, status (Active/Released/Refunded), cre
 
 ## File Structure
 src/
-  lib.rs        - contract entry point (StellarCheckoutEscrow)
+  lib.rs        - contract entry point (OrbitStream)
   escrow.rs     - Escrow struct + EscrowStatus enum
   storage.rs    - read/write contract storage
   events.rs     - EscrowCreated, EscrowReleased, EscrowRefunded
@@ -39,3 +39,13 @@ tests/
 - Refund only valid after timeout
 - All state changes emit events
 - Protect against invalid amounts and timeouts
+
+## OrbitStream Ecosystem
+This contract is the on-chain component of the broader OrbitStream platform:
+- **JS/React SDK** — `<StellarCheckout>` drop-in payment widget
+- **Hosted checkout page** — shareable payment links
+- **Backend API** — payment session management, webhook dispatch, ledger monitoring
+- **Merchant dashboard** — transaction history, analytics, settings
+- **This contract** — escrow logic for marketplace/freelance payments
+
+OrbitStream uses Stellar-native features: SEP protocols (fiat on/off ramps), built-in DEX (multi-asset), muxed accounts (payment matching), and Claimable Balances (conditional transfers).

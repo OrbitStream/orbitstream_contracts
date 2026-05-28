@@ -12,10 +12,10 @@ use storage::{store_escrow, get_escrow, get_next_escrow_id, increment_escrow_id}
 use events::*;
 
 #[contract]
-pub struct StellarCheckoutEscrow;
+pub struct OrbitStream;
 
 #[contractimpl]
-impl StellarCheckoutEscrow {
+impl OrbitStream {
     /// Create a new escrow — buyer deposits funds locked until timeout or release.
     pub fn create_escrow(
         env: Env,

@@ -1,12 +1,12 @@
-# Stellar Checkout Contracts
+# OrbitStream Contracts
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Rust-2021-orange?logo=rust)](https://www.rust-lang.org/)
 [![Soroban](https://img.shields.io/badge/Soroban-SDK%2021-7C68EE)](https://soroban.stellar.org/)
 
-> **Soroban smart contract for Stellar Checkout — escrow functionality for dispute-prone payments.**
+> **On-chain escrow contracts for OrbitStream — a Stripe-like payment gateway for Stellar.**
 
-This contract manages escrowed payments for marketplace and freelance transactions. Buyers deposit funds that are locked until released by the seller or refunded after a timeout period.
+OrbitStream is a developer-friendly payment gateway that brings Stripe-like DX to Stellar's native payment rails. This repo contains the Soroban smart contract for escrow functionality — locking funds for marketplace and freelance transactions until released or refunded.
 
 ---
 
@@ -42,7 +42,7 @@ pub struct Escrow {
 
 ```
 src/
-├── lib.rs        # Contract entry point (StellarCheckoutEscrow)
+├── lib.rs        # Contract entry point (OrbitStream)
 ├── escrow.rs     # Escrow struct + EscrowStatus enum
 ├── storage.rs    # Persistence helpers
 ├── events.rs     # EscrowCreated, EscrowReleased, EscrowRefunded
@@ -88,6 +88,20 @@ soroban contract deploy --wasm target/wasm/orbitstream-contracts.wasm --network 
 | `escrow_created` | escrow_id, buyer, seller, token, amount, timeout_at | New escrow created |
 | `escrow_released` | escrow_id, seller, amount | Seller releases funds |
 | `escrow_refunded` | escrow_id, buyer, amount | Buyer refunds after timeout |
+
+---
+
+## OrbitStream Ecosystem
+
+This contract is one piece of the broader OrbitStream platform:
+
+| Component | Description |
+|-----------|-------------|
+| **JS/React SDK** | `<StellarCheckout amount={25} currency="USDC" />` drop-in widget |
+| **Hosted checkout** | Shareable payment links (like Stripe Payment Links) |
+| **Backend API** | Payment session management, webhook dispatch, ledger monitoring |
+| **Merchant dashboard** | Transaction history, analytics, settings |
+| **This contract** | On-chain escrow for dispute-prone payments |
 
 ---
 

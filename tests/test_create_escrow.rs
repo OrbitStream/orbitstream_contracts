@@ -1,14 +1,12 @@
-#![no_std]
-
 use soroban_sdk::{testutils::Address as _, Address, Env};
-use orbitstream_contracts::StellarCheckoutEscrowClient;
+use orbitstream_contracts::{OrbitStream, OrbitStreamClient, escrow::EscrowStatus};
 
-fn setup() -> (Env, StellarCheckoutEscrowClient<'static>, Address, Address, Address) {
+fn setup() -> (Env, OrbitStreamClient<'static>, Address, Address, Address) {
     let env = Env::default();
     env.mock_all_auths();
 
-    let contract_id = env.register(StellarCheckoutEscrow, ());
-    let client = StellarCheckoutEscrowClient::new(&env, &contract_id);
+    let contract_id = env.register_contract(None, OrbitStream);
+    let client = OrbitStreamClient::new(&env, &contract_id);
 
     let buyer = Address::generate(&env);
     let seller = Address::generate(&env);
@@ -29,7 +27,7 @@ fn test_create_escrow() {
     assert_eq!(escrow.buyer, buyer);
     assert_eq!(escrow.seller, seller);
     assert_eq!(escrow.amount, 1000);
-    assert_eq!(escrow.status, orbitstream_contracts::escrow::EscrowStatus::Active);
+    assert_eq!(escrow.status, EscrowStatus::Active);
 }
 
 #[test]
@@ -43,14 +41,14 @@ fn test_create_escrow_increments_id() {
 }
 
 #[test]
-#[should_panic(expected = "InvalidAmount")]
+#[should_panic(expected = "Error(Contract, #5)")]
 fn test_create_escrow_zero_amount() {
     let (_env, client, buyer, seller, token) = setup();
     client.create_escrow(&buyer, &seller, &token, &0, &3600);
 }
 
 #[test]
-#[should_panic(expected = "InvalidTimeout")]
+#[should_panic(expected = "Error(Contract, #6)")]
 fn test_create_escrow_zero_timeout() {
     let (_env, client, buyer, seller, token) = setup();
     client.create_escrow(&buyer, &seller, &token, &1000, &0);

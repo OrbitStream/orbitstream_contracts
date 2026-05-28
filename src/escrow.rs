@@ -1,6 +1,6 @@
 use soroban_sdk::{contracttype, Address};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[contracttype]
 pub enum EscrowStatus {
     Active = 0,
