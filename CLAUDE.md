@@ -1,63 +1,41 @@
-# OrbitStream Contracts
+# Stellar Checkout Contracts
 
 ## Project
-Soroban smart contract for OrbitStream — a token streaming/payroll platform on Stellar blockchain.
+Soroban smart contract for Stellar Checkout — escrow functionality for dispute-prone payments.
 
 ## Stack
-- Rust
-- Soroban SDK
+- Rust (edition 2021)
+- Soroban SDK v21
 - Stellar Testnet / Mainnet
 
 ## What This Contract Does
-Handles salary payroll streams on Stellar. Employers create streams to employees,
-employees claim accrued tokens anytime (pull-based).
-
-## Core Data Structure
-- Stream: id, employer, employee, token, rate_per_second, deposited, withdrawn,
-  start_time, end_time, pause_time, paused_duration, status
+Manages escrowed payments for marketplace and freelance transactions. Buyers deposit funds
+that are locked until released by seller or refunded after timeout.
 
 ## Contract Functions
-### Employer
-- create_stream(employer, employee, token, rate_per_second, start_time, end_time, deposit)
-- top_up(stream_id, amount)
-- pause_stream(stream_id)
-- resume_stream(stream_id)
-- cancel_stream(stream_id)
-- update_rate(stream_id, new_rate)
+- `create_escrow(buyer, seller, token, amount, timeout_seconds) -> escrow_id` — lock funds
+- `release(escrow_id)` — seller releases funds to themselves
+- `refund(escrow_id)` — buyer claims refund after timeout
+- `get_escrow(escrow_id) -> Escrow` — read escrow details
 
-### Employee
-- claim(stream_id)
-- claim_partial(stream_id, amount)
-
-### Read
-- get_stream(stream_id)
-- get_claimable(stream_id)
-- get_streams_by_employer(employer)
-- get_streams_by_employee(employee)
-
-## Claimable Math
-elapsed = min(now, end_time) - start_time - paused_duration
-accrued = elapsed * rate_per_second
-claimable = min(accrued, deposited) - withdrawn
+## Data Structure
+Escrow: id, buyer, seller, token, amount, status (Active/Released/Refunded), created_at, timeout_at
 
 ## File Structure
 src/
-  lib.rs        - contract entry point
-  stream.rs     - Stream struct + StreamStatus enum
+  lib.rs        - contract entry point (StellarCheckoutEscrow)
+  escrow.rs     - Escrow struct + EscrowStatus enum
   storage.rs    - read/write contract storage
-  math.rs       - claimable calculation
-  events.rs     - all event definitions
+  events.rs     - EscrowCreated, EscrowReleased, EscrowRefunded
   errors.rs     - custom error types
 tests/
-  test_create.rs
-  test_claim.rs
-  test_pause_resume.rs
-  test_cancel.rs
+  test_create_escrow.rs
+  test_release.rs
+  test_refund.rs
 
 ## Key Rules
-- No business logic outside of contract (no user profiles, no analytics)
-- All state changes must emit events
-- Protect against overflow/underflow everywhere
-- Only employer can pause/cancel/top_up/update_rate
-- Only employee can claim
-- Token is USDC on Stellar by default, but contract is multi-token
+- Only buyer can create escrow and request refund
+- Only seller can release funds
+- Refund only valid after timeout
+- All state changes emit events
+- Protect against invalid amounts and timeouts

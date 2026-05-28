@@ -1,90 +1,122 @@
 #![no_std]
 
+pub mod escrow;
 pub mod errors;
-pub mod stream;
-pub mod storage;
-pub mod math;
 pub mod events;
+pub mod storage;
 
-use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec};
+use soroban_sdk::{contract, contractimpl, Address, Env};
 use errors::ContractError;
-use stream::{Stream, StreamStatus};
-use storage::{
-    store_stream, get_stream, get_next_stream_id, increment_stream_id,
-    add_stream_to_employer, add_stream_to_employee,
-    get_streams_by_employer, get_streams_by_employee,
-};
-use math::{
-    calculate_claimable, validate_stream_time_range,
-    validate_amount, validate_rate,
-};
+use escrow::{Escrow, EscrowStatus};
+use storage::{store_escrow, get_escrow, get_next_escrow_id, increment_escrow_id};
 use events::*;
 
 #[contract]
-pub struct OrbitStreamContract;
+pub struct StellarCheckoutEscrow;
 
 #[contractimpl]
-impl OrbitStreamContract {
-    /// Create a new stream
-    pub fn create_stream(
+impl StellarCheckoutEscrow {
+    /// Create a new escrow — buyer deposits funds locked until timeout or release.
+    pub fn create_escrow(
         env: Env,
-        employer: Address,
-        employee: Address,
+        buyer: Address,
+        seller: Address,
         token: Address,
-        rate_per_second: u128,
-        start_time: u64,
-        end_time: u64,
-        deposit: u128,
+        amount: u128,
+        timeout_seconds: u64,
     ) -> Result<u64, ContractError> {
-        employer.require_auth();
-        
-        validate_stream_time_range(start_time, end_time)?;
-        validate_amount(deposit)?;
-        validate_rate(rate_per_second)?;
-        
-        let stream_id = get_next_stream_id(&env);
-        increment_stream_id(&env);
-        
-        let stream = Stream::new(
-            stream_id,
-            employer.clone(),
-            employee.clone(),
-            token.clone(),
-            rate_per_second,
-            deposit,
-            start_time,
-            end_time,
-        );
-        
-        store_stream(&env, &stream);
-        add_stream_to_employer(&env, &employer, stream_id);
-        add_stream_to_employee(&env, &employee, stream_id);
-        
-        emit_stream_created(&env, StreamCreatedEvent {
-            stream_id,
-            employer,
-            employee,
+        buyer.require_auth();
+
+        if amount == 0 {
+            return Err(ContractError::InvalidAmount);
+        }
+        if timeout_seconds == 0 {
+            return Err(ContractError::InvalidTimeout);
+        }
+
+        let escrow_id = get_next_escrow_id(&env);
+        increment_escrow_id(&env);
+
+        let now = env.ledger().timestamp();
+        let escrow = Escrow {
+            id: escrow_id,
+            buyer: buyer.clone(),
+            seller: seller.clone(),
+            token: token.clone(),
+            amount,
+            status: EscrowStatus::Active,
+            created_at: now,
+            timeout_at: now + timeout_seconds,
+        };
+
+        store_escrow(&env, &escrow);
+
+        emit_escrow_created(&env, EscrowCreatedEvent {
+            escrow_id,
+            buyer,
+            seller,
             token,
-            rate_per_second,
-            deposited: deposit,
-            start_time,
-            end_time,
+            amount,
+            timeout_at: escrow.timeout_at,
         });
-        
-        Ok(stream_id)
+
+        Ok(escrow_id)
     }
-    
-    /// Get claimable amount for a stream
-    pub fn get_claimable(env: Env, stream_id: u64) -> Result<u128, ContractError> {
-        let stream = get_stream(&env, stream_id)
-            .ok_or(ContractError::StreamNotFound)?;
-        
-        calculate_claimable(&env, &stream)
+
+    /// Release escrowed funds to seller. Requires seller auth.
+    pub fn release(env: Env, escrow_id: u64) -> Result<(), ContractError> {
+        let mut escrow = get_escrow(&env, escrow_id)
+            .ok_or(ContractError::EscrowNotFound)?;
+
+        if escrow.status != EscrowStatus::Active {
+            return Err(ContractError::EscrowAlreadySettled);
+        }
+
+        escrow.seller.require_auth();
+
+        escrow.status = EscrowStatus::Released;
+        store_escrow(&env, &escrow);
+
+        emit_escrow_released(&env, EscrowReleasedEvent {
+            escrow_id,
+            seller: escrow.seller.clone(),
+            amount: escrow.amount,
+        });
+
+        Ok(())
     }
-    
-    /// Get stream details
-    pub fn get_stream(env: Env, stream_id: u64) -> Result<Stream, ContractError> {
-        get_stream(&env, stream_id)
-            .ok_or(ContractError::StreamNotFound)
+
+    /// Refund escrowed funds to buyer. Only valid after timeout.
+    pub fn refund(env: Env, escrow_id: u64) -> Result<(), ContractError> {
+        let mut escrow = get_escrow(&env, escrow_id)
+            .ok_or(ContractError::EscrowNotFound)?;
+
+        if escrow.status != EscrowStatus::Active {
+            return Err(ContractError::EscrowAlreadySettled);
+        }
+
+        let now = env.ledger().timestamp();
+        if now < escrow.timeout_at {
+            return Err(ContractError::TimeoutNotReached);
+        }
+
+        escrow.buyer.require_auth();
+
+        escrow.status = EscrowStatus::Refunded;
+        store_escrow(&env, &escrow);
+
+        emit_escrow_refunded(&env, EscrowRefundedEvent {
+            escrow_id,
+            buyer: escrow.buyer.clone(),
+            amount: escrow.amount,
+        });
+
+        Ok(())
+    }
+
+    /// Read-only: get escrow details.
+    pub fn get_escrow(env: Env, escrow_id: u64) -> Result<Escrow, ContractError> {
+        get_escrow(&env, escrow_id)
+            .ok_or(ContractError::EscrowNotFound)
     }
 }
