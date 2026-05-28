@@ -1,154 +1,104 @@
-# OrbitStream Contracts
+# Stellar Checkout Contracts
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/orbitstream/orbitstream_contracts/blob/main/LICENSE)
-[![CI](https://github.com/orbitstream/orbitstream_contracts/actions/workflows/ci.yml/badge.svg)](https://github.com/orbitstream/orbitstream_contracts/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/Rust-2021-orange?logo=rust)](https://www.rust-lang.org/)
 [![Soroban](https://img.shields.io/badge/Soroban-SDK%2021-7C68EE)](https://soroban.stellar.org/)
 
-Soroban smart contract(s) for OrbitStream — a token streaming / payroll platform built for Stellar/Soroban.
+> **Soroban smart contract for Stellar Checkout — escrow functionality for dispute-prone payments.**
 
-## Summary
+This contract manages escrowed payments for marketplace and freelance transactions. Buyers deposit funds that are locked until released by the seller or refunded after a timeout period.
 
-This repo implements on-chain streaming payroll: employers open time-based streams to employees, deposit tokens, and employees claim accrued tokens. Streams track deposited/withdrawn amounts, per-second rates, pause/resume windows, and lifecycle events.
+---
 
-## Repository layout
+## Contract Functions
 
-- `src/lib.rs` — contract entrypoint and public methods
-- `src/stream.rs` — `Stream` struct and `StreamStatus` enum
-- `src/storage.rs` — persistence helpers and indices by employer/employee
-- `src/math.rs` — claimable / accrued math and validators
-- `src/events.rs` — event types and emitters
-- `src/errors.rs` — contract error codes
-- `tests/` — (planned) integration/unit test files
+| Function | Auth | Description |
+|----------|------|-------------|
+| `create_escrow(buyer, seller, token, amount, timeout_seconds)` | Buyer | Lock funds in escrow |
+| `release(escrow_id)` | Seller | Release funds to seller |
+| `refund(escrow_id)` | Buyer | Refund after timeout |
+| `get_escrow(escrow_id)` | — | Read escrow details |
 
-## Prerequisites
+---
 
-- Rust toolchain (stable)
-- wasm target for Soroban: `rustup target add wasm32-unknown-unknown`
-- Soroban CLI (recommended): https://soroban.stellar.org/docs/getting-started/cli
+## Data Model
+
+```rust
+pub struct Escrow {
+    pub id: u64,
+    pub buyer: Address,
+    pub seller: Address,
+    pub token: Address,
+    pub amount: u128,
+    pub status: EscrowStatus,  // Active, Released, Refunded
+    pub created_at: u64,
+    pub timeout_at: u64,
+}
+```
+
+---
+
+## Project Structure
+
+```
+src/
+├── lib.rs        # Contract entry point (StellarCheckoutEscrow)
+├── escrow.rs     # Escrow struct + EscrowStatus enum
+├── storage.rs    # Persistence helpers
+├── events.rs     # EscrowCreated, EscrowReleased, EscrowRefunded
+└── errors.rs     # Error codes
+tests/
+├── test_create_escrow.rs
+├── test_release.rs
+└── test_refund.rs
+```
+
+---
 
 ## Build
-
-Build the contract wasm with Cargo:
 
 ```bash
 cargo build --target wasm32-unknown-unknown --release
 ```
 
-Or use the Soroban CLI which wraps build+bundle:
+Or with Soroban CLI:
 
 ```bash
 soroban contract build
 ```
 
-Output location:
-
-- Cargo: `target/wasm32-unknown-unknown/release/` (look for the wasm file)
-- Soroban: `target/wasm/` or the CLI's configured output directory
-
-## Tests
-
-Run unit tests:
+## Test
 
 ```bash
 cargo test
 ```
 
-Run a quick type-check:
+## Deploy
 
 ```bash
-cargo check
+soroban contract deploy --wasm target/wasm/orbitstream-contracts.wasm --network testnet --source <KEY>
 ```
-
-Integration testing recommendation:
-
-- Use the Soroban local sandbox or test harness to deploy the compiled wasm and exercise end-to-end flows (create -> accrue -> claim -> cancel).
-
-## Deploy (example)
-
-Using Soroban CLI:
-
-```bash
-# build first
-soroban contract build
-
-# deploy to local sandbox
-soroban contract deploy --wasm target/wasm/orbitstream-contract.wasm --source <KEY>
-
-# deploy to testnet (replace with actual network flags and key)
-soroban contract deploy --wasm target/wasm/orbitstream-contract.wasm --network testnet --source <KEY>
-```
-
-Alternative (raw Stellar CLI placeholder):
-
-```bash
-# stellar contract deploy --wasm <wasm-path> --source <your-keypair> --network testnet
-```
-
-## Contract API (public functions)
-
-This contract exposes a small set of core operations. See `src/lib.rs` for signatures and types.
-
-- `create_stream(employer, employee, token, rate_per_second, start_time, end_time, deposit) -> stream_id`
-  - Caller: `employer` (must authorize)
-  - Creates a new stream and emits `StreamCreated` event.
-
-- `get_claimable(env, stream_id) -> u128`
-  - Caller: anyone
-  - Returns the currently claimable amount for `stream_id`.
-
-- `get_stream(env, stream_id) -> Stream`
-  - Caller: anyone
-  - Returns stream details.
-
-Planned / TODO functions (to be implemented): `top_up`, `pause_stream`, `resume_stream`, `cancel_stream`, `update_rate`, `claim`, `claim_partial`.
-
-## Example calls (Soroban CLI style)
-
-Create stream (example placeholder — adjust types to your keys and addresses):
-
-```bash
-soroban contract invoke --wasm target/wasm/orbitstream-contract.wasm \
-	--id create_stream --arg <employer_address> <employee_address> <token_address> 1_000_000_000000 1680000000 1682592000 100000000000
-```
-
-Get claimable:
-
-```bash
-soroban contract invoke --wasm target/wasm/orbitstream-contract.wasm --id get_claimable --arg <stream_id>
-```
-
-Note: Replace CLI invocation with the exact Soroban CLI flags or RPC library calls you use. The ABI is in `src/lib.rs`.
-
-## Events
-
-The contract emits typed events for lifecycle changes (see `src/events.rs`):
-
-- `stream_created`
-- `stream_top_up`
-- `stream_claimed`
-- `stream_paused`
-- `stream_resumed`
-- `stream_cancelled`
-- `stream_rate_updated`
-
-Events are useful for indexing and off-chain notifications.
-
-## Security & Design Notes
-
-- Claimable math uses defensive checks to avoid overflow/underflow — see `src/math.rs`.
-- Streams respect `start_time`, `end_time`, and `paused_duration` in accrual calculations.
-- Access control: only the employer may change stream configuration; only the employee may claim.
-
-## Contributing
-
-- Add tests under `tests/` for each public function and lifecycle path.
-- Follow Rust formatting: `cargo fmt` and `cargo clippy` before PRs.
-
-## License
-
-MIT. See repository license file for details.
 
 ---
 
-For background and design notes see `CLAUDE.md`.
+## Events
+
+| Event | Fields | When |
+|-------|--------|------|
+| `escrow_created` | escrow_id, buyer, seller, token, amount, timeout_at | New escrow created |
+| `escrow_released` | escrow_id, seller, amount | Seller releases funds |
+| `escrow_refunded` | escrow_id, buyer, amount | Buyer refunds after timeout |
+
+---
+
+## Related Repositories
+
+- [OrbitStream_backend](https://github.com/OrbitStream/OrbitStream_backend) — Backend API
+- [orbitstream_frontend](https://github.com/OrbitStream/orbitstream_frontend) — Checkout UI
+- [orbitstream_docs](https://github.com/OrbitStream/orbitstream_docs) — Documentation
+
+---
+
+## License
+
+MIT License. Copyright (c) 2026 OrbitStream.
