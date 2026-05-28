@@ -1,5 +1,10 @@
 # OrbitStream Contracts
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/orbitstream/orbitstream_contracts/blob/main/LICENSE)
+[![CI](https://github.com/orbitstream/orbitstream_contracts/actions/workflows/ci.yml/badge.svg)](https://github.com/orbitstream/orbitstream_contracts/actions/workflows/ci.yml)
+[![Rust](https://img.shields.io/badge/Rust-2021-orange?logo=rust)](https://www.rust-lang.org/)
+[![Soroban](https://img.shields.io/badge/Soroban-SDK%2021-7C68EE)](https://soroban.stellar.org/)
+
 Soroban smart contract(s) for OrbitStream — a token streaming / payroll platform built for Stellar/Soroban.
 
 ## Summary
